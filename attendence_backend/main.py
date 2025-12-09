@@ -45,7 +45,6 @@ class PunchRequest(BaseModel):
 def home():
     return {"message": "System Live hai! 🚀"}
 
-# ✅ YE HAI WO MISSING LOGIN ENDPOINT
 @app.post("/api/login")
 def login(request: LoginRequest):
     conn = get_db_connection()
@@ -54,8 +53,6 @@ def login(request: LoginRequest):
     
     cursor = conn.cursor()
     try:
-        # Check if user exists
-        # Hum space hata kar (strip) check karenge taaki galti na ho
         clean_mobile = request.mobile_number.strip()
         
         cursor.execute("SELECT * FROM users WHERE mobile_number = %s", (clean_mobile,))
@@ -75,13 +72,7 @@ def login(request: LoginRequest):
     finally:
         conn.close()
 
-# ❌ Purana (Ise hata dein):
-# @app.post("/punch")
-
-# ✅ Naya (Ye likhein):
 @app.post("/api/punch")
-def mark_attendance(request: PunchRequest):
-    # ... baki code same rahega ...
 def mark_attendance(request: PunchRequest):
     conn = get_db_connection()
     if not conn:
@@ -102,7 +93,6 @@ def mark_attendance(request: PunchRequest):
         office = cursor.fetchone()
         
         if not office:
-            # Agar office nahi mila, to Head Office (ID 1) default maan lete hain
             cursor.execute("SELECT latitude, longitude, radius_meters FROM locations WHERE id = 1")
             office = cursor.fetchone()
 
