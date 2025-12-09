@@ -1,23 +1,28 @@
 import streamlit as st
-import psycopg2
 import pandas as pd
+from sqlalchemy import create_engine, text
 
 # ⚠️ YAHAN APNA ASLI RENDER URL PASTE KAREIN
+# (Agar URL 'postgres://' se shuru hota hai, to code apne aap use theek kar lega)
 DB_URL = "postgresql://admin:ZvzYYMivJ38wnBdJaKsANwRQe5KHALAW@dpg-d4rhpn49c44c7390ikgg-a.singapore-postgres.render.com/attendence_db_96rm"
 
-# --- Database Connection Function ---
-def get_db_connection():
-    return psycopg2.connect(DB_URL)
+# --- URL Fix for SQLAlchemy (Zaroori Hai) ---
+if DB_URL.startswith("postgres://"):
+    DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
+
+# --- Database Connection Function (Naya Tareeka) ---
+def get_db_engine():
+    return create_engine(DB_URL)
 
 # --- Page Setup ---
 st.set_page_config(page_title="Admin Panel", layout="wide")
 st.title("🚀 Attendance System Admin")
 
-# --- 🔥 TABS ---
+# --- TABS ---
 tab1, tab2, tab3 = st.tabs(["📋 Live Logs", "➕ Add & View Employees", "📍 View Locations"])
 
 # ==========================================
-# TAB 1: LIVE LOGS (Attendance Dekhein)
+# TAB 1: LIVE LOGS
 # ==========================================
 with tab1:
     st.subheader("🕒 Aaj ki Attendance")
@@ -26,7 +31,7 @@ with tab1:
         st.rerun()
 
     try:
-        conn = get_db_connection()
+        engine = get_db_engine()
         query = """
             SELECT 
                 u.full_name AS "Name", 
@@ -39,8 +44,9 @@ with tab1:
             JOIN users u ON a.user_id = u.id
             ORDER BY a.punch_time DESC;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        # Ab hum connection object use kar rahe hain jo Pandas ko pasand hai
+        with engine.connect() as conn:
+            df = pd.read_sql(text(query), conn)
 
         if df.empty:
             st.info("Abhi koi attendance data nahi hai.")
@@ -51,24 +57,20 @@ with tab1:
         st.error(f"Database Error: {e}")
 
 # ==========================================
-# TAB 2: ADD & VIEW EMPLOYEES (Yahan sudhaar kiya hai)
+# TAB 2: ADD & VIEW EMPLOYEES
 # ==========================================
 with tab2:
     st.header("👥 Employee Management")
     
-    # --- PART A: LIST DEKHEIN (Kitne log hain) ---
     try:
-        conn = get_db_connection()
-        # Users ka data layenge
-        df_users = pd.read_sql("SELECT id, full_name, mobile_number, created_at FROM users ORDER BY id ASC;", conn)
-        conn.close()
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            df_users = pd.read_sql(text("SELECT id, full_name, mobile_number, created_at FROM users ORDER BY id ASC;"), conn)
         
-        # Count dikhayein
         total_emp = len(df_users)
         st.metric(label="Total Employees Added", value=total_emp)
         
-        # Table dikhayein
-        with st.expander("📜 View All Employees List (Yahan Click Karein)", expanded=True):
+        with st.expander("📜 View All Employees List", expanded=True):
             st.dataframe(df_users, use_container_width=True)
             
     except Exception as e:
@@ -76,41 +78,35 @@ with tab2:
 
     st.markdown("---") 
 
-    # --- PART B: NAYA USER ADD KAREIN ---
     st.subheader("👤 Add New Employee")
-    
     with st.form("add_user_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
-        
         with col1:
-            name = st.text_input("Full Name (Naam)")
+            name = st.text_input("Full Name")
         with col2:
-            mobile = st.text_input("Mobile Number (Login ID)")
-        
-        location_id = st.number_input("Location ID (Default: 1)", min_value=1, value=1)
+            mobile = st.text_input("Mobile Number")
+        location_id = st.number_input("Location ID", min_value=1, value=1)
         
         submitted = st.form_submit_button("✅ Save Employee")
         
         if submitted:
             if name and mobile:
                 try:
-                    conn = get_db_connection()
-                    cur = conn.cursor()
-                    
-                    # Check duplicate
-                    cur.execute("SELECT id FROM users WHERE mobile_number = %s", (mobile,))
-                    if cur.fetchone():
-                        st.error("❌ Ye Mobile Number pehle se registered hai!")
-                    else:
-                        cur.execute("""
-                            INSERT INTO users (full_name, mobile_number, device_id, assigned_location_id)
-                            VALUES (%s, %s, 'PENDING', %s)
-                        """, (name, mobile, location_id))
-                        conn.commit()
-                        st.success(f"User '{name}' add ho gaye! List update karne ke liye Refresh karein.")
-                        st.rerun() # Page auto-refresh karega
+                    engine = get_db_engine()
+                    with engine.connect() as conn:
+                        # Check duplicate
+                        result = conn.execute(text("SELECT id FROM users WHERE mobile_number = :m"), {"m": mobile}).fetchone()
                         
-                    conn.close()
+                        if result:
+                            st.error("❌ Ye Mobile Number pehle se registered hai!")
+                        else:
+                            conn.execute(
+                                text("INSERT INTO users (full_name, mobile_number, device_id, assigned_location_id) VALUES (:n, :m, 'PENDING', :l)"),
+                                {"n": name, "m": mobile, "l": location_id}
+                            )
+                            conn.commit()
+                            st.success(f"User '{name}' add ho gaye! 🎉")
+                            st.rerun()
                 except Exception as e:
                     st.error(f"Error: {e}")
             else:
@@ -122,13 +118,13 @@ with tab2:
 with tab3:
     st.subheader("📍 Office Locations")
     try:
-        conn = get_db_connection()
-        df_loc = pd.read_sql("SELECT * FROM locations;", conn)
-        st.dataframe(df_loc)
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            df_loc = pd.read_sql(text("SELECT * FROM locations;"), conn)
         
+        st.dataframe(df_loc, use_container_width=True)
         if not df_loc.empty:
             st.map(df_loc.rename(columns={"latitude": "lat", "longitude": "lon"}))
             
-        conn.close()
     except Exception as e:
         st.error(f"Error: {e}")
