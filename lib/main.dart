@@ -4,11 +4,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 // --- CONFIGURATION ---
-
-
-
-// Naya (Ye paste karein):
-final String baseUrl = "https://attendence-backend-1-66d0.onrender.com";
+// --- CONFIGURATION ---
+// Base URL for backend API used across the app.
+// Use a top-level `const` so `baseUrl` is accessible in string interpolation.
+const String baseUrl = "https://attendence-backend-2.onrender.com";
 
 void main() {
   runApp(MaterialApp(

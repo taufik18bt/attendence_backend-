@@ -1,20 +1,25 @@
 import psycopg2
-import os
 
-# ✅ Aapka Asli Cloud Database URL yahan dal diya hai:
-DB_URL = "postgresql://admin:ZvzYYMivJ38wnBdJaKsANwRQe5KHALAW@dpg-d4rhpn49c44c7390ikgg-a.singapore-postgres.render.com/attendence_db_96rm"
+# --- ⚠️ YAHAN APNA RENDER EXTERNAL URL PASTE KAREIN ---
+DB_URL = "postgresql://admin:ZvzYYMivJ38wnBdJaKsANwRQe5KHALAW@dpg-d4rhpn49c44c7390ikgg-a.singapore-postgres.render.com/attendence_db_96rm" 
 
-def create_tables():
+def reset_database():
     try:
-        # Database connect karo
         conn = psycopg2.connect(DB_URL)
         cursor = conn.cursor()
         
-        print("Cloud Database Connected! Creating Tables...")
+        print("Purani tables delete kar raha hoon...")
+        
+        # 1. Drop Tables (Purana kachra saaf karein)
+        cursor.execute("DROP TABLE IF EXISTS attendance_logs CASCADE;")
+        cursor.execute("DROP TABLE IF EXISTS users CASCADE;")
+        cursor.execute("DROP TABLE IF EXISTS locations CASCADE;")
+        
+        print("Nayi Tables bana raha hoon...")
 
-        # 1. Locations Table
+        # 2. Create Locations
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS locations (
+            CREATE TABLE locations (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100),
                 latitude DECIMAL(9,6),
@@ -23,9 +28,9 @@ def create_tables():
             );
         """)
 
-        # 2. Users Table
+        # 3. Create Users (Ab 'device_id' ke saath!)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
+            CREATE TABLE users (
                 id SERIAL PRIMARY KEY,
                 full_name VARCHAR(100),
                 mobile_number VARCHAR(15) UNIQUE NOT NULL,
@@ -35,9 +40,9 @@ def create_tables():
             );
         """)
 
-        # 3. Attendance Logs Table
+        # 4. Create Logs
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS attendance_logs (
+            CREATE TABLE attendance_logs (
                 id SERIAL PRIMARY KEY,
                 user_id INT REFERENCES users(id),
                 punch_type VARCHAR(10) CHECK (punch_type IN ('IN', 'OUT')),
@@ -48,22 +53,21 @@ def create_tables():
             );
         """)
 
-        # Default Location 'Head Office' daal dete hain
+        # 5. Default Location Add karein
         cursor.execute("""
             INSERT INTO locations (name, latitude, longitude, radius_meters)
-            SELECT 'Head Office', 28.6139, 77.2090, 200
-            WHERE NOT EXISTS (SELECT 1 FROM locations);
+            VALUES ('Head Office', 28.6139, 77.2090, 200);
         """)
-        
+
         conn.commit()
-        print("Success! Sabhi Tables Cloud par ban gayi hain! 🚀")
+        print("\n✅ Success! Database poora naya ban gaya hai.")
+        print("Ab aap 'add_user.py' chala sakte hain.")
 
     except Exception as e:
-        print("Error aaya:", e)
+        print("❌ Error:", e)
     finally:
         if conn:
-            cursor.close()
             conn.close()
 
 if __name__ == "__main__":
-    create_tables()
+    reset_database()
