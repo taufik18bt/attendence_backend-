@@ -75,7 +75,13 @@ def login(request: LoginRequest):
     finally:
         conn.close()
 
-@app.post("/punch")
+# ❌ Purana (Ise hata dein):
+# @app.post("/punch")
+
+# ✅ Naya (Ye likhein):
+@app.post("/api/punch")
+def mark_attendance(request: PunchRequest):
+    # ... baki code same rahega ...
 def mark_attendance(request: PunchRequest):
     conn = get_db_connection()
     if not conn:
