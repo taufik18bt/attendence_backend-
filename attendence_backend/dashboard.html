@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Attendance</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; background-color: #f0f2f5; }
+        .header { background-color: #007bff; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .btn { background: white; color: #007bff; border: none; padding: 8px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; margin-left: 10px; }
+        .btn-green { background: #28a745; color: white; }
+        
+        .container { display: flex; height: 90vh; }
+        .sidebar { width: 40%; overflow-y: auto; border-right: 1px solid #ddd; background: white; }
+        .map-container { width: 60%; position: relative; }
+        #map { height: 100%; width: 100%; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 15px; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background-color: #f8f9fa; position: sticky; top: 0; }
+        .IN { color: #28a745; font-weight: bold; }
+        .OUT { color: #dc3545; font-weight: bold; }
+
+        /* ADD USER FORM STYLES */
+        #addUserModal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.3); z-index: 1000; border-radius: 8px; width: 300px; }
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; }
+        .form-group input { width: 100%; padding: 8px; box-sizing: border-box; }
+        .close-btn { background: #dc3545; color: white; border: none; padding: 5px 10px; float: right; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>📍 Attendance Admin</h1>
+        <div>
+            <button class="btn btn-green" onclick="openForm()">+ Add Employee</button>
+           <button class="btn" onclick="downloadCSV()">📥 Download Excel</button>
+<button class="btn" onclick="loadData()">Refresh</button>
+           
+        </div>
+    </div>
+
+    <div id="overlay"></div>
+    <div id="addUserModal">
+        <button class="close-btn" onclick="closeForm()">X</button>
+        <h3>Add New Employee</h3>
+        <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="newName" placeholder="e.g. Amit Verma">
+        </div>
+        <div class="form-group">
+            <label>Mobile Number</label>
+            <input type="text" id="newMobile" placeholder="e.g. 9876543210">
+        </div>
+        <div class="form-group">
+            <label>Device ID</label>
+            <input type="text" id="newDevice" placeholder="e.g. device123">
+        </div>
+        <div class="form-group">
+            <label>Assigned Location ID</label>
+            <input type="number" id="newLocationId" placeholder="e.g. 1">
+        </div>
+        <button class="btn btn-green" style="width: 100%;" onclick="submitUser()">Save Employee</button>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <table id="attendanceTable">
+                <thead>
+                    <tr><th>Name</th><th>Type</th><th>Time</th><th>Action</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="map-container"><div id="map"></div></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_URL = "http://127.0.0.1:8000"; // Base URL
+        let map, markers = [];
+
+        function initMap() {
+            map = L.map('map').setView([22.7196, 75.8577], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+        }
+
+        async function loadData() {
+            try {
+                const response = await fetch(`${API_URL}/api/reports`);
+                const result = await response.json();
+                if (!result || !result.data) { console.error('Invalid reports response', result); return; }
+                const tableBody = document.querySelector("#attendanceTable tbody");
+                tableBody.innerHTML = "";
+                markers.forEach(m => map.removeLayer(m));
+                markers = [];
+
+                result.data.forEach(log => {
+                    const dateStr = new Date(log.punch_time).toLocaleString();
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td><strong>${log.full_name}</strong><br><small>${log.mobile_number}</small></td>
+                        <td class="${log.punch_type}">${log.punch_type}</td>
+                        <td>${dateStr}</td>
+                        <td><button onclick="focusOnMap(${log.gps_lat}, ${log.gps_long})">Map</button></td>
+                    `;
+                    tableBody.appendChild(row);
+                    
+                    const marker = L.marker([log.gps_lat, log.gps_long]).addTo(map)
+                        .bindPopup(`<b>${log.full_name}</b><br>${log.punch_type} at ${dateStr}`);
+                    markers.push(marker);
+                });
+            } catch (error) { console.error("Error:", error); }
+        }
+
+        function focusOnMap(lat, lng) {
+            map.flyTo([lat, lng], 15);
+        }
+
+        // --- NEW USER FUNCTIONS ---
+        function openForm() {
+            document.getElementById("addUserModal").style.display = "block";
+            document.getElementById("overlay").style.display = "block";
+        }
+        function closeForm() {
+            document.getElementById("addUserModal").style.display = "none";
+            document.getElementById("overlay").style.display = "none";
+        }
+
+        async function submitUser() {
+            const name = document.getElementById("newName").value;
+            const mobile = document.getElementById("newMobile").value;
+
+            if(!name || !mobile) { alert("Please fill all fields"); return; }
+
+            try {
+                const device = document.getElementById("newDevice").value;
+                const assignedLocation = parseInt(document.getElementById("newLocationId").value || "0", 10);
+
+                if (!device || !assignedLocation) { alert("Please provide device ID and assigned location ID"); return; }
+
+                const response = await fetch(`${API_URL}/api/add-user`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ full_name: name, mobile_number: mobile, device_id: device, assigned_location_id: assignedLocation })
+                });
+                
+                const result = await response.json();
+                if(response.ok) {
+                    alert("User Added Successfully!");
+                    closeForm();
+                    document.getElementById("newName").value = "";
+                    document.getElementById("newMobile").value = "";
+                } else {
+                    alert("Error: " + result.detail);
+                }
+            } catch (e) { alert("Connection Failed"); }
+        }
+
+        initMap();
+        // loadData may fail if backend doesn't return expected shape; guard against bad responses
+        async function safeLoad() {
+            try {
+                await loadData();
+            } catch (e) { console.error('LoadData failed', e); }
+        }
+        safeLoad();
+
+        // --- DOWNLOAD FUNCTION ---
+function downloadCSV() {
+    // Seedha Backend API open karo, browser apne aap download shuru kar dega
+    window.location.href = `${API_URL}/api/export`;
+}
+    </script>
+</body>
+</html>
