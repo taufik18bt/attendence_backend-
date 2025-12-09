@@ -7,7 +7,7 @@ from math import radians, cos, sin, asin, sqrt
 
 app = FastAPI()
 
-# ⚠️ Apna ASLI Render URL yahan dalein
+# ⚠️ Yahan apna ASLI RENDER URL (postgres://...) dalein
 DB_URL = os.getenv("DATABASE_URL", "postgresql://admin:ZvzYYMivJ38wnBdJaKsANwRQe5KHALAW@dpg-d4rhpn49c44c7390ikgg-a.singapore-postgres.render.com/attendence_db_96rm")
 
 def get_db_connection():
@@ -30,9 +30,10 @@ class LoginRequest(BaseModel):
     mobile_number: str
     device_id: str = "Unknown"
 
-# ✅ UPDATE: Ab ye User ID accept karega
+# ✅ YAHAN THA PROBLEM 2 (Ab humne fix kar diya)
+# Ab ye mobile_number nahi, user_id maangega
 class PunchRequest(BaseModel):
-    user_id: int          # <-- Mobile number hata kar User ID kar diya
+    user_id: int          
     latitude: float
     longitude: float
     punch_type: str
@@ -49,7 +50,6 @@ def login(request: LoginRequest):
     cursor = conn.cursor()
     try:
         clean_mobile = request.mobile_number.strip()
-        # Login ke waqt Location details bhi bhejenge
         cursor.execute("""
             SELECT u.*, l.name as location_name, l.latitude as office_lat, l.longitude as office_long 
             FROM users u 
@@ -73,42 +73,35 @@ def mark_attendance(request: PunchRequest):
     if not conn: raise HTTPException(status_code=500, detail="Database Error")
     cursor = conn.cursor()
     try:
-        # 1. User ko ID se dhoondo
+        # Problem 2 Fix: Ab hum ID se user dhoondenge
         cursor.execute("SELECT * FROM users WHERE id = %s", (request.user_id,))
         user = cursor.fetchone()
-        
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        if not user: raise HTTPException(status_code=404, detail="User not found")
             
-        # 2. Location Check (Agar assigned_location_id column nahi mila to handle karega)
+        # Location Logic
         if 'assigned_location_id' in user and user['assigned_location_id']:
             cursor.execute("SELECT latitude, longitude, radius_meters FROM locations WHERE id = %s", (user['assigned_location_id'],))
             office = cursor.fetchone()
         else:
-            # Default Head Office (ID 1)
             cursor.execute("SELECT latitude, longitude, radius_meters FROM locations WHERE id = 1")
             office = cursor.fetchone()
 
-        if not office:
-             raise HTTPException(status_code=400, detail="Office Location set nahi hai.")
+        if not office: raise HTTPException(status_code=400, detail="Office Location set nahi hai.")
 
-        # 3. Distance Check
+        # Distance Logic
         dist = calculate_distance(request.latitude, request.longitude, float(office['latitude']), float(office['longitude']))
-        
         if dist > office['radius_meters']:
             raise HTTPException(status_code=400, detail=f"Too Far! You are {int(dist)}m away.")
 
-        # 4. Save Punch
+        # Save Logic
         cursor.execute("""
             INSERT INTO attendance_logs (user_id, punch_type, gps_lat, gps_long)
             VALUES (%s, %s, %s, %s)
         """, (request.user_id, request.punch_type, request.latitude, request.longitude))
-        
         conn.commit()
         return {"status": "Success", "message": "Punch Accepted!", "distance": int(dist)}
 
     except Exception as e:
-        print("Error:", e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
