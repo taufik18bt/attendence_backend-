@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-# ⚠️ YAHAN APNA ASLI RENDER URL PASTE KAREIN
+# ⚠️ YAHAN APNA ASLI RENDER EXTERNAL URL DALEIN
 DB_URL = "postgresql://admin:ZvzYYMivJ38wnBdJaKsANwRQe5KHALAW@dpg-d4rhpn49c44c7390ikgg-a.singapore-postgres.render.com/attendence_db_96rm"
 
-# --- URL Fix ---
+# URL Fix
 if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
@@ -19,31 +19,38 @@ st.title("🚀 Attendance System Admin")
 tab1, tab2, tab3 = st.tabs(["📋 Live Logs", "➕ Add & View Employees", "🏢 Manage Locations"])
 
 # ==========================================
-# TAB 1: LIVE LOGS
+# TAB 1: LIVE LOGS (INDIA TIME FIX 🇮🇳)
 # ==========================================
 with tab1:
-    st.subheader("🕒 Aaj ki Attendance")
+    st.subheader("🕒 Aaj ki Attendance (India Time)")
     if st.button("Refresh Data 🔄", key="refresh_main"):
         st.rerun()
 
     try:
         engine = get_db_engine()
+        # ✅ MAGIC LINE: Hum database ke time mein 5:30 ghante jod rahe hain display ke liye
         query = """
-            SELECT u.full_name, u.mobile_number, a.punch_type, 
-            TO_CHAR(a.punch_time, 'DD-Mon HH24:MI:SS') as time, 
-            a.gps_lat, a.gps_long 
-            FROM attendance_logs a JOIN users u ON a.user_id = u.id 
+            SELECT 
+                u.full_name AS "Name", 
+                u.mobile_number AS "Mobile", 
+                a.punch_type AS "Type", 
+                TO_CHAR(a.punch_time + INTERVAL '5 hours 30 minutes', 'DD-Mon HH12:MI:SS AM') AS "Time (IST)", 
+                a.gps_lat, 
+                a.gps_long 
+            FROM attendance_logs a
+            JOIN users u ON a.user_id = u.id
             ORDER BY a.punch_time DESC;
         """
         with engine.connect() as conn:
             df = pd.read_sql(text(query), conn)
         
         if df.empty:
-            st.info("No data yet.")
+            st.info("Abhi koi attendance data nahi hai.")
         else:
             st.dataframe(df, use_container_width=True)
+
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Database Error: {e}")
 
 # ==========================================
 # TAB 2: EMPLOYEES
@@ -53,11 +60,12 @@ with tab2:
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            df_users = pd.read_sql(text("SELECT * FROM users ORDER BY id ASC"), conn)
+            # Users list query
+            df_users = pd.read_sql(text("SELECT id, full_name, mobile_number, role, assigned_location_id FROM users ORDER BY id ASC"), conn)
         
         st.metric("Total Employees", len(df_users))
-        with st.expander("View List", expanded=False):
-            st.dataframe(df_users)
+        with st.expander("View Employee List", expanded=False):
+            st.dataframe(df_users, use_container_width=True)
             
     except Exception as e:
         st.error(str(e))
@@ -67,24 +75,23 @@ with tab2:
     
     with st.form("add_user"):
         col1, col2 = st.columns(2)
-        with col1: name = st.text_input("Name")
-        with col2: mobile = st.text_input("Mobile")
+        with col1: name = st.text_input("Full Name")
+        with col2: mobile = st.text_input("Mobile Number")
         
-        # Yahan user ko batayenge ki available locations kya hain
-        loc_id = st.number_input("Location ID (Existing: 1=Head Office)", min_value=1, value=1)
+        loc_id = st.number_input("Location ID (Default: 1)", min_value=1, value=1)
         
         if st.form_submit_button("Save Employee"):
             if name and mobile:
                 try:
                     engine = get_db_engine()
                     with engine.connect() as conn:
-                        # Check location exists
-                        loc_check = conn.execute(text("SELECT id FROM locations WHERE id=:i"), {"i": loc_id}).fetchone()
-                        if not loc_check:
-                            st.error(f"❌ Location ID {loc_id} nahi mili! Pehle Tab 3 mein jakar Location banayein.")
+                        # Check duplicate
+                        check = conn.execute(text("SELECT id FROM users WHERE mobile_number=:m"), {"m":mobile}).fetchone()
+                        if check:
+                            st.error("❌ Number pehle se registered hai!")
                         else:
                             conn.execute(
-                                text("INSERT INTO users (full_name, mobile_number, device_id, assigned_location_id) VALUES (:n, :m, 'PENDING', :l)"),
+                                text("INSERT INTO users (full_name, mobile_number, device_id, assigned_location_id, role) VALUES (:n, :m, 'PENDING', :l, 'employee')"),
                                 {"n": name, "m": mobile, "l": loc_id}
                             )
                             conn.commit()
@@ -94,12 +101,10 @@ with tab2:
                     st.error(f"Error: {e}")
 
 # ==========================================
-# TAB 3: LOCATIONS (NEW FEATURE ADDED) 🏢
+# TAB 3: LOCATIONS
 # ==========================================
 with tab3:
     st.header("📍 Manage Offices")
-    
-    # 1. List Locations
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
@@ -109,17 +114,13 @@ with tab3:
         pass
 
     st.markdown("---")
-    
-    # 2. Add Location Form
-    st.subheader("➕ Add New Office Location")
+    st.subheader("➕ Add New Office")
     with st.form("add_loc"):
-        c1, c2 = st.columns(2)
-        with c1: loc_name = st.text_input("Office Name (e.g. Branch 2)")
-        with c2: radius = st.number_input("Radius (Meters)", value=200)
-        
-        c3, c4 = st.columns(2)
-        with c3: lat = st.number_input("Latitude", format="%.6f", value=28.6139)
-        with c4: lon = st.number_input("Longitude", format="%.6f", value=77.2090)
+        loc_name = st.text_input("Office Name")
+        c1, c2, c3 = st.columns(3)
+        with c1: lat = st.number_input("Latitude", format="%.6f", value=28.6139)
+        with c2: lon = st.number_input("Longitude", format="%.6f", value=77.2090)
+        with c3: rad = st.number_input("Radius (m)", value=200)
         
         if st.form_submit_button("Create Location"):
             try:
@@ -127,10 +128,10 @@ with tab3:
                 with engine.connect() as conn:
                     conn.execute(
                         text("INSERT INTO locations (name, latitude, longitude, radius_meters) VALUES (:n, :la, :lo, :r)"),
-                        {"n": loc_name, "la": lat, "lo": lon, "r": radius}
+                        {"n": loc_name, "la": lat, "lo": lon, "r": rad}
                     )
                     conn.commit()
-                    st.success("New Location Created! ✅")
+                    st.success("Location Added! ✅")
                     st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
