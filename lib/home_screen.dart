@@ -1,3 +1,4 @@
+import 'package:url_launcher/url_launcher.dart'; // 1. Import
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -6,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 
 // ⚠️ APNA RENDER URL YAHAN HAI
-const String baseUrl = "postgresql://admin:ZvzYYMivJ38wnBdJaKsANwRQe5KHALAW@dpg-d4rhpn49c44c7390ikgg-a.singapore-postgres.render.com/attendence_db_96rm";
+const String baseUrl = "https://attendence-backend-2.onrender.com";
 
 class HomeScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -20,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _timeString = "";
   String _dateString = "";
   bool _isLoading = false;
-  String _status = "Tap to Punch"; // Initial Status
+  String _status = "Tap to Punch"; 
 
   @override
   void initState() {
@@ -48,19 +49,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return DateFormat('EEEE, d MMMM y').format(dateTime);
   }
 
-  // --- 🤜 API PUNCH FUNCTION ---
+  // --- API PUNCH FUNCTION ---
   Future<void> _handlePunch(String type) async {
     setState(() => _isLoading = true);
 
     try {
-      // Server ko request bhej rahe hain
       final response = await http.post(
         Uri.parse("$baseUrl/api/punch"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "user_id": widget.user['id'], // User ID login se aaya hai
-          "punch_type": type,           // IN ya OUT
-          "latitude": 24.6721,          // 📍 Testing Location (Head Office ke pass)
+          "user_id": widget.user['id'], 
+          "punch_type": type,           
+          "latitude": 24.6721,          
           "longitude": 81.8893,
           "device_id": "MOBILE_APP"
         }),
@@ -69,13 +69,11 @@ class _HomeScreenState extends State<HomeScreen> {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
-        // ✅ SUCCESS
         setState(() {
           _status = type == "IN" ? "🟢 Punched IN" : "🔴 Punched OUT";
         });
         _showMsg("Success! Punch Accepted.", Colors.green);
       } else {
-        // ❌ FAILED (Door ho ya error hai)
         _showMsg(data['detail'] ?? "Failed to mark attendance", Colors.red);
       }
     } catch (e) {
@@ -104,14 +102,14 @@ class _HomeScreenState extends State<HomeScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF4A00E0), Color(0xFF8E2DE2)], // Royal Purple
+            colors: [Color(0xFF4A00E0), Color(0xFF8E2DE2)], 
           ),
         ),
         child: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- HEADER (Naam aur Photo) ---
+              // --- HEADER ---
               Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Row(
@@ -159,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text(
                         _timeString,
-                        style: GoogleFonts.robotoMono( // ✅ Corrected Font
+                        style: GoogleFonts.robotoMono(
                           color: Colors.white,
                           fontSize: 40,
                           fontWeight: FontWeight.bold,
@@ -239,6 +237,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ),
+
+                    // ✅ NEW: ADMIN LOGIN BUTTON ADDED HERE
+                    const SizedBox(height: 20),
+                    TextButton.icon(
+                      onPressed: () {
+                        _showAdminPasswordDialog(context);
+                      },
+                      icon: const Icon(Icons.admin_panel_settings, color: Colors.blueGrey),
+                      label: const Text(
+                        "Admin Login",
+                        style: TextStyle(color: Colors.blueGrey, fontSize: 16, decoration: TextDecoration.underline),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -276,6 +287,59 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // ✅ NEW: PASSWORD DIALOG FUNCTION ADDED HERE (At the bottom)
+  void _showAdminPasswordDialog(BuildContext context) {
+    final TextEditingController passwordController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("🔐 Admin Access"),
+          content: TextField(
+            controller: passwordController,
+            obscureText: true, 
+            decoration: const InputDecoration(
+              hintText: "Admin Password daliye",
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                // 🔐 PASSWORD YAHAN SET HAI: '12345'
+                if (passwordController.text == "12345") {
+                  Navigator.pop(context); 
+                  
+                  // Apni Admin Site ka URL yahan dalein
+                  final Uri url = Uri.parse("https://attendance-admin-9ny9.onrender.com");
+                  
+                  if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Could not launch Admin Panel")),
+                    );
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("❌ Galat Password!"),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              child: const Text("Login"),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
-import 'login_screen.dart'; // Login Screen import karna zaroori hai
+import 'login_screen.dart'; // <--- Zaroori
 
+
+class ApiService {
+  // ❌ PURANA HATAO:
+
+  // ✅ NAYA LAGAO (Apna Render Web Service URL):
+  static const String baseUrl = "https://attendence-backend-2.onrender.com";
+  // (Last mein slash '/' mat lagana)
+}
 void main() {
   runApp(const MyApp());
 }
@@ -11,15 +19,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, // Debug banner hatane ke liye
-      title: 'Smart Attendance',
+      debugShowCheckedModeBanner: false,
+      title: 'Vikram Attendance',
       theme: ThemeData(
-        // Humne Purple theme rakha hai taaki UI se match kare
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      // App yahan se shuru hoga
-      home: const LoginScreen(),
+      home: const LoginScreen(), // <--- Ye LoginScreen khol raha hai
     );
   }
 }
