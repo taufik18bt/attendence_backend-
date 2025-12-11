@@ -19,7 +19,7 @@ st.title("🚀 Attendance System Admin")
 tab1, tab2, tab3 = st.tabs(["📋 Live Logs", "➕ Add & View Employees", "🏢 Manage Locations"])
 
 # ==========================================
-# TAB 1: LIVE LOGS (INDIA TIME FIX 🇮🇳)
+# TAB 1: LIVE LOGS (INDIA TIME) 🇮🇳
 # ==========================================
 with tab1:
     st.subheader("🕒 Aaj ki Attendance (India Time)")
@@ -28,7 +28,6 @@ with tab1:
 
     try:
         engine = get_db_engine()
-        # ✅ MAGIC LINE: Hum database ke time mein 5:30 ghante jod rahe hain display ke liye
         query = """
             SELECT 
                 u.full_name AS "Name", 
@@ -60,7 +59,6 @@ with tab2:
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # Users list query
             df_users = pd.read_sql(text("SELECT id, full_name, mobile_number, role, assigned_location_id FROM users ORDER BY id ASC"), conn)
         
         st.metric("Total Employees", len(df_users))
@@ -85,7 +83,6 @@ with tab2:
                 try:
                     engine = get_db_engine()
                     with engine.connect() as conn:
-                        # Check duplicate
                         check = conn.execute(text("SELECT id FROM users WHERE mobile_number=:m"), {"m":mobile}).fetchone()
                         if check:
                             st.error("❌ Number pehle se registered hai!")
@@ -101,37 +98,112 @@ with tab2:
                     st.error(f"Error: {e}")
 
 # ==========================================
-# TAB 3: LOCATIONS
+# TAB 3: LOCATIONS (FULL CONTROL) 🏢
 # ==========================================
 with tab3:
     st.header("📍 Manage Offices")
+    
+    # 1. LIVE LIST DIKHAO
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
             df_loc = pd.read_sql(text("SELECT * FROM locations ORDER BY id ASC"), conn)
+        
+        st.info("Current Locations List:")
         st.dataframe(df_loc, use_container_width=True)
-    except:
-        pass
+        
+        # Location IDs ki list (Dropdown ke liye)
+        loc_options = df_loc['id'].tolist() if not df_loc.empty else []
+        
+    except Exception as e:
+        st.error(f"Error loading locations: {e}")
+        loc_options = []
 
     st.markdown("---")
-    st.subheader("➕ Add New Office")
-    with st.form("add_loc"):
-        loc_name = st.text_input("Office Name")
-        c1, c2, c3 = st.columns(3)
-        with c1: lat = st.number_input("Latitude", format="%.6f", value=28.6139)
-        with c2: lon = st.number_input("Longitude", format="%.6f", value=77.2090)
-        with c3: rad = st.number_input("Radius (m)", value=200)
-        
-        if st.form_submit_button("Create Location"):
-            try:
-                engine = get_db_engine()
-                with engine.connect() as conn:
-                    conn.execute(
-                        text("INSERT INTO locations (name, latitude, longitude, radius_meters) VALUES (:n, :la, :lo, :r)"),
-                        {"n": loc_name, "la": lat, "lo": lon, "r": rad}
-                    )
-                    conn.commit()
+    
+    # --- 3 SECTIONS: ADD | EDIT | DELETE ---
+    action = st.radio("Kya karna chahte hain?", ["➕ Add New Location", "✏️ Edit Location", "🗑️ Delete Location"], horizontal=True)
+
+    # ----------- SECTION 1: ADD -----------
+    if action == "➕ Add New Location":
+        st.subheader("➕ Add New Office")
+        with st.form("add_loc"):
+            loc_name = st.text_input("Office Name")
+            c1, c2, c3 = st.columns(3)
+            with c1: lat = st.number_input("Latitude", format="%.6f", value=28.6139)
+            with c2: lon = st.number_input("Longitude", format="%.6f", value=77.2090)
+            with c3: rad = st.number_input("Radius (m)", value=200)
+            
+            if st.form_submit_button("Create Location"):
+                try:
+                    engine = get_db_engine()
+                    with engine.connect() as conn:
+                        conn.execute(
+                            text("INSERT INTO locations (name, latitude, longitude, radius_meters) VALUES (:n, :la, :lo, :r)"),
+                            {"n": loc_name, "la": lat, "lo": lon, "r": rad}
+                        )
+                        conn.commit()
                     st.success("Location Added! ✅")
                     st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    # ----------- SECTION 2: EDIT -----------
+    elif action == "✏️ Edit Location":
+        st.subheader("✏️ Update Office Details")
+        if not loc_options:
+            st.warning("Koi Location nahi hai edit karne ke liye.")
+        else:
+            # Dropdown se ID select karo
+            selected_id = st.selectbox("Select Location ID to Edit", loc_options)
+            
+            # Us ID ka data nikalo
+            selected_row = df_loc[df_loc['id'] == selected_id].iloc[0]
+            
+            with st.form("edit_loc"):
+                new_name = st.text_input("Office Name", value=selected_row['name'])
+                c1, c2, c3 = st.columns(3)
+                with c1: new_lat = st.number_input("Latitude", format="%.6f", value=float(selected_row['latitude']))
+                with c2: new_lon = st.number_input("Longitude", format="%.6f", value=float(selected_row['longitude']))
+                with c3: new_rad = st.number_input("Radius (m)", value=int(selected_row['radius_meters']))
+                
+                if st.form_submit_button("Update Location"):
+                    try:
+                        engine = get_db_engine()
+                        with engine.connect() as conn:
+                            conn.execute(
+                                text("UPDATE locations SET name=:n, latitude=:la, longitude=:lo, radius_meters=:r WHERE id=:id"),
+                                {"n": new_name, "la": new_lat, "lo": new_lon, "r": new_rad, "id": int(selected_id)}
+                            )
+                            conn.commit()
+                        st.success("Location Updated! 🔄")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+    # ----------- SECTION 3: DELETE -----------
+    elif action == "🗑️ Delete Location":
+        st.subheader("🗑️ Delete Office")
+        st.warning("⚠️ Dhyan rahe: Agar is Office mein Employees assigned hain, to ye delete nahi hoga.")
+        
+        if not loc_options:
+            st.warning("Delete karne ke liye kuch nahi hai.")
+        else:
+            del_id = st.selectbox("Select Location ID to Delete", loc_options)
+            
+            if st.button("❌ Permanently Delete"):
+                try:
+                    engine = get_db_engine()
+                    with engine.connect() as conn:
+                        # Pehle check karo koi employee to nahi hai
+                        emp_count = conn.execute(text("SELECT COUNT(*) FROM users WHERE assigned_location_id=:id"), {"id": int(del_id)}).scalar()
+                        
+                        if emp_count > 0:
+                            st.error(f"❌ Delete Failed! Is office mein abhi {emp_count} employees hain. Pehle unhe shift karein.")
+                        else:
+                            conn.execute(text("DELETE FROM locations WHERE id=:id"), {"id": int(del_id)})
+                            conn.commit()
+                            st.success(f"Location ID {del_id} Deleted! 🗑️")
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
